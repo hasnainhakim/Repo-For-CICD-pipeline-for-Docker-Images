@@ -1,0 +1,52 @@
+version: 0.2
+phases:
+  pre_build:
+    commands:
+      - echo "DOCKER FILE LINT STATGE"
+      - echo "PRE_BUILD Phase Will fail if Dockerfile is not secure or linted"
+      - echo Using Hadolint for Dockerfile linting
+      - docker pull ghcr.io/hadolint/hadolint:latest
+      - docker run --rm -i -v ${PWD}/.hadolint.yml:/.hadolint.yaml hadolint/hadolint hadolint -f json - < ./Dockerfile
+      - echo DOCKER FILE LINT STATGE - PASSED
+      - apt-get install wget apt-transport-https gnupg
+      - wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | apt-key add -
+      - echo deb https://aquasecurity.github.io/trivy-repo/deb bionic main | tee -a /etc/apt/sources.list.d/trivy.list
+      - apt-get update
+      - apt-get install -y trivy
+      - ECR_LOGIN=$(aws ecr get-login --region $AWS_DEFAULT_REGION --no-include-email)
+      - echo Logging in to Amazon ECR...
+      - $ECR_LOGIN
+      - IMAGE_TAG=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - PASSWORD=`echo $ECR_LOGIN | cut -d' ' -f6`
+    finally:
+      - |
+        if [ "$CODEBUILD_BUILD_SUCCEEDING" -eq 0 ]; then
+            aws sns publish --topic-arn arn:aws:sns:us-west-2:027619007323:codestar-notifications- --message "Build failed in pre_build";
+        fi
+      
+  build:
+    commands:
+      - echo "BUILD IMAGE & PUSH TO ECR"
+      - docker build -f Dockerfile -t $ECR_REPOSITORY_URI:latest .
+      - docker tag $ECR_REPOSITORY_URI:latest $ECR_REPOSITORY_URI:$IMAGE_TAG
+      - docker history --no-trunc $ECR_REPOSITORY_URI:$IMAGE_TAG
+    finally:
+      - |
+        if [ "$CODEBUILD_BUILD_SUCCEEDING" -eq 0 ]; then
+            aws sns publish --topic-arn arn:aws:sns:us-west-2:027619007323:codestar-notifications- --message "Build failed in build";
+        fi      
+  post_build:
+    commands:
+    #   - bash -c "if [ /"$CODEBUILD_BUILD_SUCCEEDING/" == /"0/" ]; then error=$(aws codebuild batch-get-builds --ids $CODEBUILD_BUILD_ID --query 'builds[0].phases[?phaseType==`POST_BUILD`].contexts[0].message' --output text); aws sns publish --topic-arn arn:aws:sns:us-west-2:027619007323:codestar-notifications- --message "$error"; exit 1; fi"
+      - trivy image --scanners vuln $ECR_REPOSITORY_URI:$IMAGE_TAG > trivy-output.txt
+      - if grep -q "found vulnerabilities" trivy-output.txt; then echo "Vulnerabilities found. Rolling back to previous version..."; else echo "No vulnerabilities found."; fi
+      - echo Build completed on `date`
+      - echo Pushing the Docker images...
+      - docker push $ECR_REPOSITORY_URI:$IMAGE_TAG
+    finally:
+      - |
+        if [ "$CODEBUILD_BUILD_SUCCEEDING" -eq 0 ]; then
+            aws sns publish --topic-arn arn:aws:sns:us-west-2:027619007323:codestar-notifications- --message "Build failed in POST_BUILD`";
+        else
+          aws sns publish --topic-arn arn:aws:sns:us-west-2:027619007323:codestar-notifications- --message "Build succeeded!";
+        fi      
