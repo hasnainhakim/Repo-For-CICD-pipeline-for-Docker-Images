@@ -21,7 +21,7 @@ phases:
     finally:
       - |
         if [ "$CODEBUILD_BUILD_SUCCEEDING" -eq 0 ]; then
-            aws sns publish --topic-arn arn:aws:sns:us-west-2:027619007323:codestar-notifications- --message "Build failed in pre_build";
+            aws sns publish --topic-arn Enter-your-SNS-ARN-HERE --message "Build failed in pre_build";
         fi
       
   build:
@@ -33,7 +33,7 @@ phases:
     finally:
       - |
         if [ "$CODEBUILD_BUILD_SUCCEEDING" -eq 0 ]; then
-            aws sns publish --topic-arn arn:aws:sns:us-west-2:027619007323:codestar-notifications- --message "Build failed in build";
+            aws sns publish --topic-arn Enter-your-SNS-ARN-HERE --message "Build failed in build";
         fi      
   post_build:
     commands:
@@ -46,7 +46,7 @@ phases:
     finally:
       - |
         if [ "$CODEBUILD_BUILD_SUCCEEDING" -eq 0 ]; then
-            aws sns publish --topic-arn arn:aws:sns:us-west-2:027619007323:codestar-notifications- --message "Build failed in POST_BUILD`";
+            aws sns publish --topic-arn Enter-your-SNS-ARN-HERE --message "Build failed in POST_BUILD`";
         else
-          aws sns publish --topic-arn arn:aws:sns:us-west-2:027619007323:codestar-notifications- --message "Build succeeded!";
+          aws sns publish --topic-arn Enter-your-SNS-ARN-HERE --message "Build succeeded!";
         fi      
